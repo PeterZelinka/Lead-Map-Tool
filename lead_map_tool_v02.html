@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lead Map Tool</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Page Styling -->
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    #map {
+      height: 100vh;
+      width: 100vw;
+    }
+  </style>
+</head>
+<body>
+  <!-- Controls Panel -->
+  <div id="controls">
+    <input type="file" id="fileInput" accept=".csv" />
+  </div>
+
+  <!-- Map Container -->
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- PapaParse (CSV Parser) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <!-- Main Script -->
+  <script>
+    // Initialize map centered on Europe
+    const map = L.map("map").setView([50.08, 14.43], 12);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    // Handle CSV upload
+    document.getElementById("fileInput").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: function (results) {
+          const data = results.data;
+
+          data.forEach((row) => {
+            const lat = parseFloat(row.lat);
+            const lng = parseFloat(row.lng);
+
+            if (!lat || !lng) return;
+
+            const name = row.name || "Unknown";
+            const phone = row.phone || "N/A";
+            const category = row.category || "N/A";
+
+            const popupContent = `
+              <b>${name}</b><br>
+              Phone: ${phone}<br>
+              Category: ${category}
+            `;
+
+            L.marker([lat, lng]).bindPopup(popupContent).addTo(map);
+          });
+        },
+      });
+    });
+  </script>
+</body>
+</html>
