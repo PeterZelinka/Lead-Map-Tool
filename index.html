@@ -36,7 +36,8 @@ width: 100vw;
 <body>
 <!-- Controls Panel -->
 <div id="controls">
-<input type="file" id="fileInput" accept=".csv" />
+<input type="text" id="sheetUrl" placeholder="Paste Google Sheet link" style="width:260px;" />
+<button id="loadBtn">Load</button>
 </div>
 
 
@@ -96,6 +97,14 @@ dynamicTyping: true,
 skipEmptyLines: true,
 complete: function (results) {
 const data = results.data;
+
+
+data.forEach((row) => {
+const lat = parseFloat(row.lat);
+const lng = parseFloat(row.lng);
+
+
+if (!lat || !lng) return;
 
 
 </html>
