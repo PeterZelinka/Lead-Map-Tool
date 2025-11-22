@@ -43,6 +43,37 @@
       min-height: 400px;
       background: #e3e3e3; /* fallback so it's never plain white */
     }
+
+    /* Custom circular markers with grade label */
+    .lead-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .lead-marker .grade {
+      pointer-events: none;
+    }
+
+    .lead-marker.marker-wolt {
+      background-color: #02bbdeff;
+    }
+
+    .lead-marker.marker-bolt {
+      background-color: #2a9c64ff;
+    }
+
+    .lead-marker.marker-default {
+      background-color: #8f9391ff;
+    }
   </style>
 </head>
 <body>
@@ -51,7 +82,7 @@
     <b>CSV upload:</b>
     <input type="file" id="fileInput" accept=".csv" />
     <span style="font-size: 12px; opacity: 0.7;">
-      Expected headers e.g.: <i>lat,lng,name,phone,category</i>
+      Expected headers e.g.: <i>lat,lng,name,grade,email,opening hours,selection,wolt gap,bolt food gap</i>
     </span>
   </div>
 
@@ -72,33 +103,37 @@
       markersLayer = L.layerGroup().addTo(map);
     };
 
-    // Helper: detect latitude/longitude columns by common header names
-    function findLatLngColumns(header) {
-      const latCandidates = ["lat", "latitude", "y"];
-      const lngCandidates = ["lng", "long", "lon", "longitude", "x"];
-
-      let latIndex = -1;
-      let lngIndex = -1;
-
-      header.forEach((col, i) => {
-        const name = col.trim().toLowerCase();
-        if (latCandidates.includes(name)) latIndex = i;
-        if (lngCandidates.includes(name)) lngIndex = i;
+    // Helper: find first header that matches any candidate names
+    function findField(header, candidates) {
+      let found = null;
+      header.forEach(h => {
+        const name = h.trim().toLowerCase();
+        if (candidates.includes(name) && !found) {
+          found = h; // return original name so we can index row[h]
+        }
       });
-
-      return { latIndex, lngIndex };
+      return found;
     }
 
     // Helper: plot parsed rows on the map
-    function addRowsToMap(rows, header) {
-      if (!rows || rows.length === 0) {
+    function addRowsToMap(data, header) {
+      if (!data || data.length === 0) {
         alert("No data rows found in the CSV.");
         return;
       }
 
-      const { latIndex, lngIndex } = findLatLngColumns(header);
+      // Identify key fields (case-insensitive)
+      const latField  = findField(header, ["lat", "latitude", "y"]);
+      const lngField  = findField(header, ["lng", "lon", "long", "longitude", "x"]);
 
-      if (latIndex === -1 || lngIndex === -1) {
+      const gradeField       = findField(header, ["grade"]);
+      const emailField       = findField(header, ["email", "e-mail"]);
+      const openingField     = findField(header, ["opening hours", "opening_hours", "hours"]);
+      const selectionField   = findField(header, ["selection"]);
+      const woltGapField     = findField(header, ["wolt gap", "wolt_gap", "woltgap"]);
+      const boltGapField     = findField(header, ["bolt food gap", "bolt_food gap", "bolt food gap", "bolt_food_gap", "boltgap"]);
+
+      if (!latField || !lngField) {
         alert(
           "Could not find latitude/longitude columns.\n" +
           "Use headers like 'lat'/'lng' or 'latitude'/'longitude'.\n\n" +
@@ -110,17 +145,49 @@
       // Clear existing markers
       markersLayer.clearLayers();
 
-      rows.forEach(row => {
-        const lat = parseFloat(row[latIndex]);
-        const lng = parseFloat(row[lngIndex]);
+      data.forEach(row => {
+        const lat = parseFloat(row[latField]);
+        const lng = parseFloat(row[lngField]);
 
         if (isNaN(lat) || isNaN(lng)) return;
 
-        const popupHTML = header.map((h, i) =>
-          `<b>${h}:</b> ${row[i] || ""}`
+        // --- Grade label for marker ---
+        let rawGrade = gradeField ? (row[gradeField] || "").toString().trim() : "";
+        let gradeLabel;
+        if (!rawGrade || /^ungraded$/i.test(rawGrade)) {
+          gradeLabel = "N/a";
+        } else {
+          gradeLabel = rawGrade.toUpperCase();
+        }
+
+        // --- Gap flags for color ---
+        const woltYes = woltGapField &&
+          (row[woltGapField] || "").toString().trim().toLowerCase() === "yes";
+        const boltYes = boltGapField &&
+          (row[boltGapField] || "").toString().trim().toLowerCase() === "yes";
+
+        let markerClass = "marker-default"; // grey
+        if (woltYes && !boltYes) {
+          markerClass = "marker-wolt"; // Wolt only
+        } else if (boltYes && !woltYes) {
+          markerClass = "marker-bolt"; // Bolt only
+        }
+        // both yes or both no => marker-default (grey), per rules
+
+        const icon = L.divIcon({
+          className: `lead-marker ${markerClass}`,
+          html: `<span class="grade">${gradeLabel}</span>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 30],
+          popupAnchor: [0, -30]
+        });
+
+        // --- Popup content: show all fields (including new ones) ---
+        const popupHTML = header.map(h =>
+          `<b>${h}:</b> ${row[h] != null ? row[h] : ""}`
         ).join("<br>");
 
-        L.marker([lat, lng]).addTo(markersLayer)
+        L.marker([lat, lng], { icon }).addTo(markersLayer)
           .bindPopup(popupHTML);
       });
 
@@ -146,9 +213,7 @@
           }
 
           const header = meta.fields || Object.keys(data[0]);
-          const rows = data.map(row => header.map(h => row[h]));
-
-          addRowsToMap(rows, header);
+          addRowsToMap(data, header);
         },
         error: function (err) {
           console.error(err);
