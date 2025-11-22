@@ -1,144 +1,161 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lead Map Tool</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lead Map Tool – CSV Only</title>
 
-    <!-- Leaflet (no integrity attributes) -->
-    <link rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <!-- Leaflet CSS & JS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
-    <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-        }
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
 
-        #controls {
-            padding: 10px;
-            background: #f1f1f1;
-            border-bottom: 1px solid #ccc;
-        }
+    #topbar {
+      padding: 10px;
+      background: #f1f1f1;
+      border-bottom: 1px solid #ccc;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
 
-        #sheetUrl {
-            width: 60%;
-            padding: 6px;
-        }
+    #fileInput {
+      padding: 3px;
+    }
 
-        button {
-            padding: 7px 12px;
-            cursor: pointer;
-        }
-
-        /* ENSURE MAP IS ALWAYS VISIBLE */
-        #map {
-            height: calc(100% - 60px);
-            width: 100%;
-            min-height: 400px;
-            background: #e3e3e3; /* fallback color so it's never white */
-        }
-    </style>
+    #map {
+      height: calc(100% - 60px);
+      width: 100%;
+      min-height: 400px;
+      background: #e3e3e3; /* fallback so it's never plain white */
+    }
+  </style>
 </head>
-
 <body>
 
-<div id="controls">
-    <label><b>Google Sheet link:</b></label>
-    <input id="sheetUrl" type="text" placeholder="Paste Google Sheet link here">
-    <button onclick="loadSheet()">Load</button>
-</div>
+  <div id="topbar">
+    <b>CSV upload:</b>
+    <input type="file" id="fileInput" accept=".csv" />
+    <span style="font-size: 12px; opacity: 0.7;">
+      Expected headers e.g.: <i>lat,lng,name,phone,category</i>
+    </span>
+  </div>
 
-<div id="map"></div>
+  <div id="map"></div>
 
-<script>
-window.onload = function () {
+  <script>
+    let map;
+    let markersLayer;
 
-    // --------------------------
-    // 1. Initialize map AFTER DOM loads
-    // --------------------------
-    const map = L.map("map").setView([50.08, 14.44], 12);
+    // Initialize map after page load
+    window.onload = function () {
+      map = L.map("map").setView([50.08, 14.44], 12);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19
-    }).addTo(map);
+      }).addTo(map);
 
-    window.map = map; // store globally
-    window.markersLayer = L.layerGroup().addTo(map);
-};
+      markersLayer = L.layerGroup().addTo(map);
+    };
 
+    // Helper: detect latitude/longitude columns by common header names
+    function findLatLngColumns(header) {
+      const latCandidates = ["lat", "latitude", "y"];
+      const lngCandidates = ["lng", "long", "lon", "longitude", "x"];
 
-// --------------------------
-// Convert Google Sheet → CSV
-// --------------------------
-function convertToCsvUrl(url) {
-    const match = url.match(/\/d\/(.*?)\//);
-    if (!match) return null;
+      let latIndex = -1;
+      let lngIndex = -1;
 
-    const sheetId = match[1];
-    return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
-}
+      header.forEach((col, i) => {
+        const name = col.trim().toLowerCase();
+        if (latCandidates.includes(name)) latIndex = i;
+        if (lngCandidates.includes(name)) lngIndex = i;
+      });
 
-
-// --------------------------
-// Load and plot leads
-// --------------------------
-async function loadSheet() {
-    const link = document.getElementById("sheetUrl").value.trim();
-    if (!link) {
-        alert("Please paste a Google Sheet link.");
-        return;
+      return { latIndex, lngIndex };
     }
 
-    const csvUrl = convertToCsvUrl(link);
-    if (!csvUrl) {
-        alert("Invalid Google Sheet link format.");
+    // Helper: plot parsed rows on the map
+    function addRowsToMap(rows, header) {
+      if (!rows || rows.length === 0) {
+        alert("No data rows found in the CSV.");
         return;
+      }
+
+      const { latIndex, lngIndex } = findLatLngColumns(header);
+
+      if (latIndex === -1 || lngIndex === -1) {
+        alert(
+          "Could not find latitude/longitude columns.\n" +
+          "Use headers like 'lat'/'lng' or 'latitude'/'longitude'.\n\n" +
+          "Found headers: " + header.join(", ")
+        );
+        return;
+      }
+
+      // Clear existing markers
+      markersLayer.clearLayers();
+
+      rows.forEach(row => {
+        const lat = parseFloat(row[latIndex]);
+        const lng = parseFloat(row[lngIndex]);
+
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const popupHTML = header.map((h, i) =>
+          `<b>${h}:</b> ${row[i] || ""}`
+        ).join("<br>");
+
+        L.marker([lat, lng]).addTo(markersLayer)
+          .bindPopup(popupHTML);
+      });
+
+      alert("Map updated with leads!");
     }
 
-    try {
-        const response = await fetch(csvUrl);
-        const csv = await response.text();
+    // CSV upload handler
+    document.getElementById("fileInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
 
-        const rows = csv.split("\n").map(r => r.split(","));
-        const header = rows[0].map(h => h.trim().toLowerCase());
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: false,
+        skipEmptyLines: true,
+        complete: function (results) {
+          const data = results.data;
+          const meta = results.meta;
 
-        const latIndex = header.indexOf("latitude");
-        const lngIndex = header.indexOf("longitude");
-
-        if (latIndex === -1 || lngIndex === -1) {
-            alert("Sheet must include 'latitude' and 'longitude' columns.");
+          if (!data.length) {
+            alert("CSV seems to be empty.");
             return;
+          }
+
+          const header = meta.fields || Object.keys(data[0]);
+          const rows = data.map(row => header.map(h => row[h]));
+
+          addRowsToMap(rows, header);
+        },
+        error: function (err) {
+          console.error(err);
+          alert("Error parsing CSV file.");
         }
-
-        // clear old markers
-        window.markersLayer.clearLayers();
-
-        rows.slice(1).forEach(row => {
-            const lat = parseFloat(row[latIndex]);
-            const lng = parseFloat(row[lngIndex]);
-
-            if (!isNaN(lat) && !isNaN(lng)) {
-                const popupHTML = header.map((h, i) =>
-                    `<b>${h}:</b> ${row[i] || ""}`
-                ).join("<br>");
-
-                L.marker([lat, lng]).addTo(window.markersLayer)
-                    .bindPopup(popupHTML);
-            }
-        });
-
-        alert("Map updated with leads!");
-
-    } catch (err) {
-        console.error(err);
-        alert("Could not load the Google Sheet.");
-    }
-}
-</script>
-
+      });
+    });
+  </script>
 </body>
 </html>
