@@ -63,6 +63,7 @@
       pointer-events: none;
     }
 
+    /* Colors */
     .lead-marker.marker-wolt {
       background-color: #02bbdeff;
     }
@@ -73,6 +74,15 @@
 
     .lead-marker.marker-default {
       background-color: #8f9391ff;
+    }
+
+    /* Split color for both Wolt + Bolt gap */
+    .lead-marker.marker-both {
+      background: linear-gradient(
+        to right,
+        #02bbdeff 50%,
+        #2a9c64ff 50%
+      );
     }
   </style>
 </head>
@@ -131,7 +141,13 @@
       const openingField     = findField(header, ["opening hours", "opening_hours", "hours"]);
       const selectionField   = findField(header, ["selection"]);
       const woltGapField     = findField(header, ["wolt gap", "wolt_gap", "woltgap"]);
-      const boltGapField     = findField(header, ["bolt food gap", "bolt_food gap", "bolt food gap", "bolt_food_gap", "boltgap"]);
+      const boltGapField     = findField(header, [
+        "bolt food gap",
+        "bolt_food gap",
+        "bolt food gap",
+        "bolt_food_gap",
+        "boltgap"
+      ]);
 
       if (!latField || !lngField) {
         alert(
@@ -153,10 +169,10 @@
 
         // --- Grade label for marker ---
         let rawGrade = gradeField ? (row[gradeField] || "").toString().trim() : "";
-        let gradeLabel;
-        if (!rawGrade || /^ungraded$/i.test(rawGrade)) {
-          gradeLabel = "N/a";
-        } else {
+        let gradeLabel = "";
+
+        // If there's a grade and it's not "Ungraded", show it; otherwise leave empty
+        if (rawGrade && !/^ungraded$/i.test(rawGrade)) {
           gradeLabel = rawGrade.toUpperCase();
         }
 
@@ -167,12 +183,16 @@
           (row[boltGapField] || "").toString().trim().toLowerCase() === "yes";
 
         let markerClass = "marker-default"; // grey
-        if (woltYes && !boltYes) {
-          markerClass = "marker-wolt"; // Wolt only
-        } else if (boltYes && !woltYes) {
-          markerClass = "marker-bolt"; // Bolt only
+
+        if (woltYes && boltYes) {
+          // both Wolt + Bolt gap => split color
+          markerClass = "marker-both";
+        } else if (woltYes) {
+          markerClass = "marker-wolt";
+        } else if (boltYes) {
+          markerClass = "marker-bolt";
         }
-        // both yes or both no => marker-default (grey), per rules
+        // else keep marker-default (grey) for no gaps
 
         const icon = L.divIcon({
           className: `lead-marker ${markerClass}`,
