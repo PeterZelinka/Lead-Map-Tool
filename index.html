@@ -1,115 +1,142 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lead Map Tool</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lead Map Tool</title>
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet (NO integrity attributes — avoids browser blocking) -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+    </script>
 
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
-    }
-    #controls {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 1000;
-      background: white;
-      padding: 10px;
-      border-radius: 6px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    }
-    #map {
-      height: 100vh;
-      width: 100vw;
-    }
-  </style>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+        #controls {
+            padding: 10px;
+            background: #f1f1f1;
+            border-bottom: 1px solid #ccc;
+        }
+        #map {
+            height: 90vh;
+            width: 100%;
+        }
+        #sheetUrl {
+            width: 60%;
+            padding: 6px;
+        }
+        button {
+            padding: 7px 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 
 <body>
 
-  <!-- Controls Panel -->
-  <div id="controls">
-    <input type="text" id="sheetUrl" placeholder="Paste Google Sheet share link" style="width:300px;" />
-    <button id="loadBtn">Load</button>
-  </div>
+<div id="controls">
+    <label><b>Google Sheet link:</b></label>
+    <input type="text" id="sheetUrl" placeholder="Paste your Google Sheet link" />
+    <button onclick="loadSheet()">Load</button>
+</div>
 
-  <!-- Map Container -->
-  <div id="map"></div>
+<div id="map"></div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- PapaParse -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
-  <!-- Main Script -->
-  <script>
+<script>
+    // -------------------------------
     // Initialize map
-    const map = L.map("map").setView([50.08, 14.43], 12);
-
+    // -------------------------------
+    const map = L.map('map').setView([50.08, 14.44], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors"
+        maxZoom: 19,
     }).addTo(map);
 
-    // Load Google Sheet button
-    document.getElementById("loadBtn").addEventListener("click", () => {
-      const url = document.getElementById("sheetUrl").value.trim();
-      if (!url) {
-        alert("Please paste a Google Sheet link.");
-        return;
-      }
 
-      // Extract Sheet ID
-      const match = url.match(/docs\\.google\\.com\\/spreadsheets\\/d\\/([^/]+)/);
-      if (!match) {
-        alert("Invalid Google Sheet link.");
-        return;
-      }
+    // -------------------------------
+    // Convert Google Sheet link → CSV export link
+    // -------------------------------
+    function convertToCsvUrl(url) {
+        try {
+            const match = url.match(/\/d\/(.*?)\//);
+            if (!match) return null;
+            const sheetId = match[1];
+            return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+        } catch {
+            return null;
+        }
+    }
 
-      const sheetId = match[1];
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
 
-      fetch(csvUrl)
-        .then(res => res.text())
-        .then(csvText => {
-          Papa.parse(csvText, {
-            header: true,
-            dynamicTyping: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-              const data = results.data;
+    // -------------------------------
+    // Load sheet → fetch CSV → parse → plot markers
+    // -------------------------------
+    async function loadSheet() {
+        const link = document.getElementById("sheetUrl").value.trim();
+        if (!link) {
+            alert("Please paste a Google Sheet link.");
+            return;
+        }
 
-              data.forEach(row => {
-                const lat = parseFloat(row.lat);
-                const lng = parseFloat(row.lng);
+        const csvUrl = convertToCsvUrl(link);
+        if (!csvUrl) {
+            alert("Invalid Google Sheet link format.");
+            return;
+        }
 
-                if (!lat || !lng) return;
-
-                const name = row.name || "Unknown";
-                const phone = row.phone || "N/A";
-                const category = row.category || "N/A";
-
-                const popup = `
-                  <b>${name}</b><br>
-                  Phone: ${phone}<br>
-                  Category: ${category}
-                `;
-
-                L.marker([lat, lng]).bindPopup(popup).addTo(map);
-              });
+        try {
+            const response = await fetch(csvUrl);
+            if (!response.ok) {
+                alert("Could not fetch Google Sheet. Make sure sharing is set to 'Anyone with the link'.");
+                return;
             }
-          });
-        })
-        .catch(() => {
-          alert("Failed to load Google Sheet. Check access permissions.");
-        });
-    });
-  </script>
+
+            const csvText = await response.text();
+            const rows = csvText.split("\n").map(r => r.split(","));
+
+            const header = rows[0].map(h => h.trim().toLowerCase());
+            const latIndex = header.indexOf("latitude");
+            const lngIndex = header.indexOf("longitude");
+
+            if (latIndex === -1 || lngIndex === -1) {
+                alert("Your sheet must contain 'latitude' and 'longitude' column headers.");
+                return;
+            }
+
+            // Clear existing markers
+            if (window.markersLayer) map.removeLayer(window.markersLayer);
+            window.markersLayer = L.layerGroup().addTo(map);
+
+            // Loop through all data rows
+            rows.slice(1).forEach(row => {
+                const lat = parseFloat(row[latIndex]);
+                const lng = parseFloat(row[lngIndex]);
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    const popupContent = row
+                        .map((val, i) => `<b>${header[i]}:</b> ${val}`)
+                        .join("<br>");
+
+                    L.marker([lat, lng]).addTo(window.markersLayer)
+                        .bindPopup(popupContent);
+                }
+            });
+
+            alert("Map updated!");
+
+        } catch (err) {
+            console.error(err);
+            alert("Failed to load data. Check console for details.");
+        }
+    }
+</script>
+
 </body>
 </html>
