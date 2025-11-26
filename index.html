@@ -6,13 +6,10 @@
   <title>Lead Map Tool – CSV Only</title>
 
   <!-- Leaflet CSS & JS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- PapaParse for CSV parsing -->
+  <!-- PapaParse -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
   <style>
@@ -20,48 +17,57 @@
       margin: 0;
       padding: 0;
       height: 100%;
+      overflow: hidden;
       font-family: Arial, sans-serif;
     }
 
+    /* FIX: Filters visible on top */
     #topbar {
-      padding: 10px;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
       background: #f1f1f1;
       border-bottom: 1px solid #ccc;
+      padding: 10px;
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
+      gap: 15px;
       align-items: center;
-    }
-
-    select, input[type="file"] {
-      padding: 5px 8px;
-      font-size: 14px;
+      flex-wrap: wrap;
     }
 
     label {
       font-weight: bold;
-      margin-right: 5px;
     }
 
+    select, input[type="file"] {
+      padding: 5px;
+      font-size: 13px;
+    }
+
+    /* FIX: Map pushed down below filters */
     #map {
-      height: calc(100% - 90px);
-      width: 100%;
-      background: #e3e3e3;
+      position: absolute;
+      top: 70px;   /* height of filter bar */
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #e1e1e1;
     }
 
-    /* Marker styling */
+    /* Marker styles */
     .lead-marker {
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 50%;
       width: 30px;
       height: 30px;
-      border: 2px solid #ffffff;
-      box-shadow: 0 0 4px rgba(0,0,0,0.4);
-      color: #ffffff;
-      font-size: 12px;
+      border-radius: 50%;
+      border: 2px solid white;
       font-weight: bold;
+      font-size: 12px;
+      color: white;
     }
 
     .marker-wolt { background-color: #02bbdeff; }
@@ -69,11 +75,7 @@
     .marker-default { background-color: #8f9391ff; }
 
     .marker-both {
-      background: linear-gradient(
-        to right,
-        #02bbdeff 50%,
-        #2a9c64ff 50%
-      );
+      background: linear-gradient(to right, #02bbdeff 50%, #2a9c64ff 50%);
     }
   </style>
 </head>
@@ -81,7 +83,7 @@
 
   <div id="topbar">
     <label>CSV:</label>
-    <input type="file" id="fileInput" accept=".csv">
+    <input type="file" id="fileInput" accept=".csv" />
 
     <label>Hunter:</label>
     <select id="filterHunter"><option value="All">All</option></select>
@@ -106,15 +108,14 @@
   <div id="map"></div>
 
   <script>
-    let map, markersLayer;
-    let allData = [];
-    let header = [];
+    let map, markersLayer, allData = [], header = [];
 
     window.onload = function () {
-      map = L.map('map').setView([50.08, 14.44], 12);
+      map = L.map("map").setView([50.08, 14.44], 12);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19
+        maxZoom: 19,
       }).addTo(map);
+
       markersLayer = L.layerGroup().addTo(map);
     };
 
@@ -130,25 +131,24 @@
       const select = document.getElementById(id);
       select.innerHTML = '<option value="All">All</option>';
       [...values].sort().forEach(v => {
-        if (v !== "" && v != null) {
+        if (v !== "" && v != null)
           select.innerHTML += `<option value="${v}">${v}</option>`;
-        }
       });
     }
 
     function applyFilters() {
       const fHunter = document.getElementById("filterHunter").value;
-      const fWeek   = document.getElementById("filterWeek").value;
+      const fWeek = document.getElementById("filterWeek").value;
       const fStatus = document.getElementById("filterStatus").value;
-      const fGrade  = document.getElementById("filterGrade").value;
+      const fGrade = document.getElementById("filterGrade").value;
 
       const filtered = allData.filter(row => {
         if (fHunter !== "All" && row["Hunter name"] !== fHunter) return false;
-        if (fWeek   !== "All" && row["Week"] !== fWeek) return false;
+        if (fWeek !== "All" && row["Week"] !== fWeek) return false;
         if (fStatus !== "All" && row["Status"] !== fStatus) return false;
 
         const g = (row["grade"] || "").trim();
-        const normalized = (g === "" || /^ungraded$/i.test(g)) ? "Ungraded" : g;
+        const normalized = g === "" || /^ungraded$/i.test(g) ? "Ungraded" : g;
 
         if (fGrade !== "All" && normalized !== fGrade) return false;
 
@@ -163,7 +163,6 @@
 
       const latField = findField(header, ["lat", "latitude"]);
       const lngField = findField(header, ["lng", "lon", "long", "longitude"]);
-
       const gradeField = "grade";
       const woltField = "wolt gap";
       const boltField = "bolt food gap";
@@ -174,7 +173,7 @@
         if (isNaN(lat) || isNaN(lng)) return;
 
         const g = (row[gradeField] || "").trim();
-        const gradeLabel = (g === "" || /^ungraded$/i.test(g)) ? "" : g.toUpperCase();
+        const gradeLabel = g === "" || /^ungraded$/i.test(g) ? "" : g.toUpperCase();
 
         const wYes = (row[woltField] || "").trim().toLowerCase() === "yes";
         const bYes = (row[boltField] || "").trim().toLowerCase() === "yes";
@@ -189,7 +188,6 @@
           html: `<span>${gradeLabel}</span>`,
           iconSize: [30, 30],
           iconAnchor: [15, 30],
-          popupAnchor: [0, -30]
         });
 
         const popupHTML = header
@@ -212,7 +210,7 @@
           header = results.meta.fields;
 
           populateFilter("filterHunter", new Set(allData.map(d => d["Hunter name"])));
-          populateFilter("filterWeek",   new Set(allData.map(d => d["Week"])));
+          populateFilter("filterWeek", new Set(allData.map(d => d["Week"])));
           populateFilter("filterStatus", new Set(allData.map(d => d["Status"])));
 
           applyFilters();
@@ -220,9 +218,9 @@
       });
     });
 
-    ["filterHunter", "filterWeek", "filterStatus", "filterGrade"].forEach(id => {
-      document.getElementById(id).addEventListener("change", applyFilters);
-    });
+    ["filterHunter", "filterWeek", "filterStatus", "filterGrade"].forEach(id =>
+      document.getElementById(id).addEventListener("change", applyFilters)
+    );
   </script>
 </body>
 </html>
