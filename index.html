@@ -29,12 +29,18 @@
       border-bottom: 1px solid #ccc;
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 12px;
       align-items: center;
     }
 
     select, input[type="file"] {
-      padding: 5px;
+      padding: 5px 8px;
+      font-size: 14px;
+    }
+
+    label {
+      font-weight: bold;
+      margin-right: 5px;
     }
 
     #map {
@@ -43,7 +49,7 @@
       background: #e3e3e3;
     }
 
-    /* Custom circular markers */
+    /* Marker styling */
     .lead-marker {
       display: flex;
       align-items: center;
@@ -52,23 +58,15 @@
       width: 30px;
       height: 30px;
       border: 2px solid #ffffff;
-      box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 0 4px rgba(0,0,0,0.4);
       color: #ffffff;
       font-size: 12px;
       font-weight: bold;
     }
 
-    .marker-wolt {
-      background-color: #02bbdeff;
-    }
-
-    .marker-bolt {
-      background-color: #2a9c64ff;
-    }
-
-    .marker-default {
-      background-color: #8f9391ff;
-    }
+    .marker-wolt { background-color: #02bbdeff; }
+    .marker-bolt { background-color: #2a9c64ff; }
+    .marker-default { background-color: #8f9391ff; }
 
     .marker-both {
       background: linear-gradient(
@@ -82,163 +80,5 @@
 <body>
 
   <div id="topbar">
-    <b>CSV upload:</b>
-    <input type="file" id="fileInput" accept=".csv" />
-
-    <b>Hunter:</b>
-    <select id="filterHunter"><option value="All">All</option></select>
-
-    <b>Week:</b>
-    <select id="filterWeek"><option value="All">All</option></select>
-
-    <b>Status:</b>
-    <select id="filterStatus"><option value="All">All</option></select>
-
-    <b>Grade:</b>
-    <select id="filterGrade">
-      <option value="All">All</option>
-      <option value="A">A</option>
-      <option value="B">B</option>
-      <option value="C">C</option>
-      <option value="D">D</option>
-      <option value="Ungraded">Ungraded</option>
-    </select>
-  </div>
-
-  <div id="map"></div>
-
-  <script>
-    let map, markersLayer;
-    let allData = []; // full dataset stored here
-    let header = [];  // header row
-
-    window.onload = function () {
-      map = L.map("map").setView([50.08, 14.44], 12);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-      }).addTo(map);
-
-      markersLayer = L.layerGroup().addTo(map);
-    };
-
-    function findField(header, candidates) {
-      let found = null;
-      header.forEach((h) => {
-        if (candidates.includes(h.trim().toLowerCase()) && !found) {
-          found = h;
-        }
-      });
-      return found;
-    }
-
-    function populateFilter(id, values) {
-      const select = document.getElementById(id);
-      select.innerHTML = `<option value="All">All</option>`;
-      [...values].sort().forEach((v) => {
-        if (v !== "" && v != null) {
-          select.innerHTML += `<option value="${v}">${v}</option>`;
-        }
-      });
-    }
-
-    function applyFilters() {
-      const fHunter = document.getElementById("filterHunter").value;
-      const fWeek   = document.getElementById("filterWeek").value;
-      const fStatus = document.getElementById("filterStatus").value;
-      const fGrade  = document.getElementById("filterGrade").value;
-
-      const filtered = allData.filter((row) => {
-        if (fHunter !== "All" && row["Hunter name"] !== fHunter) return false;
-        if (fWeek   !== "All" && row["Week"] !== fWeek) return false;
-        if (fStatus !== "All" && row["Status"] !== fStatus) return false;
-
-        // Grade filter:
-        const rowGrade = (row["grade"] || "").trim();
-        const normalized = rowGrade === "" || /^ungraded$/i.test(rowGrade)
-          ? "Ungraded"
-          : rowGrade;
-
-        if (fGrade !== "All" && normalized !== fGrade) return false;
-
-        return true;
-      });
-
-      drawMarkers(filtered);
-    }
-
-    function drawMarkers(data) {
-      markersLayer.clearLayers();
-
-      const latField = findField(header, ["lat", "latitude"]);
-      const lngField = findField(header, ["lng", "lon", "long", "longitude"]);
-
-      const gradeField = "grade";
-      const woltField = "wolt gap";
-      const boltField = "bolt food gap";
-
-      data.forEach((row) => {
-        const lat = parseFloat(row[latField]);
-        const lng = parseFloat(row[lngField]);
-        if (isNaN(lat) || isNaN(lng)) return;
-
-        const rawGrade = (row[gradeField] || "").trim();
-        const gradeLabel = rawGrade === "" || /^ungraded$/i.test(rawGrade)
-          ? ""
-          : rawGrade.toUpperCase();
-
-        const woltYes =
-          (row[woltField] || "").trim().toLowerCase() === "yes";
-        const boltYes =
-          (row[boltField] || "").trim().toLowerCase() === "yes";
-
-        let markerClass = "marker-default";
-        if (woltYes && boltYes) markerClass = "marker-both";
-        else if (woltYes) markerClass = "marker-wolt";
-        else if (boltYes) markerClass = "marker-bolt";
-
-        const icon = L.divIcon({
-          className: `lead-marker ${markerClass}`,
-          html: `<span>${gradeLabel}</span>`,
-          iconSize: [30, 30],
-          iconAnchor: [15, 30],
-          popupAnchor: [0, -30],
-        });
-
-        const popupHTML = header
-          .map((h) => `<b>${h}:</b> ${row[h] ?? ""}`)
-          .join("<br>");
-
-        L.marker([lat, lng], { icon }).addTo(markersLayer).bindPopup(popupHTML);
-      });
-    }
-
-    document
-      .getElementById("fileInput")
-      .addEventListener("change", function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            allData = results.data;
-            header = results.meta.fields;
-
-            // Populate filters
-            populateFilter("filterHunter", new Set(allData.map((d) => d["Hunter name"])));
-            populateFilter("filterWeek",   new Set(allData.map((d) => d["Week"])));
-            populateFilter("filterStatus", new Set(allData.map((d) => d["Status"])));
-
-            applyFilters();
-          },
-        });
-      });
-
-    // Attach filter listeners
-    ["filterHunter", "filterWeek", "filterStatus", "filterGrade"].forEach((id) => {
-      document.getElementById(id).addEventListener("change", applyFilters);
-    });
-  </script>
-</body>
-</html>
+    <label>CSV:</label>
+    <input type="file" id="fileInput" ac
