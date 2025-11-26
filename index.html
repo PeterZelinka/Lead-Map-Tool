@@ -29,22 +29,21 @@
       border-bottom: 1px solid #ccc;
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 10px;
       align-items: center;
     }
 
-    #fileInput {
-      padding: 3px;
+    select, input[type="file"] {
+      padding: 5px;
     }
 
     #map {
-      height: calc(100% - 60px);
+      height: calc(100% - 90px);
       width: 100%;
-      min-height: 400px;
-      background: #e3e3e3; /* fallback so it's never plain white */
+      background: #e3e3e3;
     }
 
-    /* Custom circular markers with grade label */
+    /* Custom circular markers */
     .lead-marker {
       display: flex;
       align-items: center;
@@ -59,25 +58,19 @@
       font-weight: bold;
     }
 
-    .lead-marker .grade {
-      pointer-events: none;
-    }
-
-    /* Colors */
-    .lead-marker.marker-wolt {
+    .marker-wolt {
       background-color: #02bbdeff;
     }
 
-    .lead-marker.marker-bolt {
+    .marker-bolt {
       background-color: #2a9c64ff;
     }
 
-    .lead-marker.marker-default {
+    .marker-default {
       background-color: #8f9391ff;
     }
 
-    /* Split color for both Wolt + Bolt gap */
-    .lead-marker.marker-both {
+    .marker-both {
       background: linear-gradient(
         to right,
         #02bbdeff 50%,
@@ -91,155 +84,160 @@
   <div id="topbar">
     <b>CSV upload:</b>
     <input type="file" id="fileInput" accept=".csv" />
-    <span style="font-size: 12px; opacity: 0.7;">
-      Expected headers e.g.: <i>lat,lng,name,grade,email,opening hours,selection,wolt gap,bolt food gap</i>
-    </span>
+
+    <b>Hunter:</b>
+    <select id="filterHunter"><option value="All">All</option></select>
+
+    <b>Week:</b>
+    <select id="filterWeek"><option value="All">All</option></select>
+
+    <b>Status:</b>
+    <select id="filterStatus"><option value="All">All</option></select>
+
+    <b>Grade:</b>
+    <select id="filterGrade">
+      <option value="All">All</option>
+      <option value="A">A</option>
+      <option value="B">B</option>
+      <option value="C">C</option>
+      <option value="D">D</option>
+      <option value="Ungraded">Ungraded</option>
+    </select>
   </div>
 
   <div id="map"></div>
 
   <script>
-    let map;
-    let markersLayer;
+    let map, markersLayer;
+    let allData = []; // full dataset stored here
+    let header = [];  // header row
 
-    // Initialize map after page load
     window.onload = function () {
       map = L.map("map").setView([50.08, 14.44], 12);
-
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19
+        maxZoom: 19,
       }).addTo(map);
 
       markersLayer = L.layerGroup().addTo(map);
     };
 
-    // Helper: find first header that matches any candidate names
     function findField(header, candidates) {
       let found = null;
-      header.forEach(h => {
-        const name = h.trim().toLowerCase();
-        if (candidates.includes(name) && !found) {
-          found = h; // return original name so we can index row[h]
+      header.forEach((h) => {
+        if (candidates.includes(h.trim().toLowerCase()) && !found) {
+          found = h;
         }
       });
       return found;
     }
 
-    // Helper: plot parsed rows on the map
-    function addRowsToMap(data, header) {
-      if (!data || data.length === 0) {
-        alert("No data rows found in the CSV.");
-        return;
-      }
+    function populateFilter(id, values) {
+      const select = document.getElementById(id);
+      select.innerHTML = `<option value="All">All</option>`;
+      [...values].sort().forEach((v) => {
+        if (v !== "" && v != null) {
+          select.innerHTML += `<option value="${v}">${v}</option>`;
+        }
+      });
+    }
 
-      // Identify key fields (case-insensitive)
-      const latField  = findField(header, ["lat", "latitude", "y"]);
-      const lngField  = findField(header, ["lng", "lon", "long", "longitude", "x"]);
+    function applyFilters() {
+      const fHunter = document.getElementById("filterHunter").value;
+      const fWeek   = document.getElementById("filterWeek").value;
+      const fStatus = document.getElementById("filterStatus").value;
+      const fGrade  = document.getElementById("filterGrade").value;
 
-      const gradeField       = findField(header, ["grade"]);
-      const emailField       = findField(header, ["email", "e-mail"]);
-      const openingField     = findField(header, ["opening hours", "opening_hours", "hours"]);
-      const selectionField   = findField(header, ["selection"]);
-      const woltGapField     = findField(header, ["wolt gap", "wolt_gap", "woltgap"]);
-      const boltGapField     = findField(header, [
-        "bolt food gap",
-        "bolt_food gap",
-        "bolt food gap",
-        "bolt_food_gap",
-        "boltgap"
-      ]);
+      const filtered = allData.filter((row) => {
+        if (fHunter !== "All" && row["Hunter name"] !== fHunter) return false;
+        if (fWeek   !== "All" && row["Week"] !== fWeek) return false;
+        if (fStatus !== "All" && row["Status"] !== fStatus) return false;
 
-      if (!latField || !lngField) {
-        alert(
-          "Could not find latitude/longitude columns.\n" +
-          "Use headers like 'lat'/'lng' or 'latitude'/'longitude'.\n\n" +
-          "Found headers: " + header.join(", ")
-        );
-        return;
-      }
+        // Grade filter:
+        const rowGrade = (row["grade"] || "").trim();
+        const normalized = rowGrade === "" || /^ungraded$/i.test(rowGrade)
+          ? "Ungraded"
+          : rowGrade;
 
-      // Clear existing markers
+        if (fGrade !== "All" && normalized !== fGrade) return false;
+
+        return true;
+      });
+
+      drawMarkers(filtered);
+    }
+
+    function drawMarkers(data) {
       markersLayer.clearLayers();
 
-      data.forEach(row => {
+      const latField = findField(header, ["lat", "latitude"]);
+      const lngField = findField(header, ["lng", "lon", "long", "longitude"]);
+
+      const gradeField = "grade";
+      const woltField = "wolt gap";
+      const boltField = "bolt food gap";
+
+      data.forEach((row) => {
         const lat = parseFloat(row[latField]);
         const lng = parseFloat(row[lngField]);
-
         if (isNaN(lat) || isNaN(lng)) return;
 
-        // --- Grade label for marker ---
-        let rawGrade = gradeField ? (row[gradeField] || "").toString().trim() : "";
-        let gradeLabel = "";
+        const rawGrade = (row[gradeField] || "").trim();
+        const gradeLabel = rawGrade === "" || /^ungraded$/i.test(rawGrade)
+          ? ""
+          : rawGrade.toUpperCase();
 
-        // If there's a grade and it's not "Ungraded", show it; otherwise leave empty
-        if (rawGrade && !/^ungraded$/i.test(rawGrade)) {
-          gradeLabel = rawGrade.toUpperCase();
-        }
+        const woltYes =
+          (row[woltField] || "").trim().toLowerCase() === "yes";
+        const boltYes =
+          (row[boltField] || "").trim().toLowerCase() === "yes";
 
-        // --- Gap flags for color ---
-        const woltYes = woltGapField &&
-          (row[woltGapField] || "").toString().trim().toLowerCase() === "yes";
-        const boltYes = boltGapField &&
-          (row[boltGapField] || "").toString().trim().toLowerCase() === "yes";
-
-        let markerClass = "marker-default"; // grey
-
-        if (woltYes && boltYes) {
-          // both Wolt + Bolt gap => split color
-          markerClass = "marker-both";
-        } else if (woltYes) {
-          markerClass = "marker-wolt";
-        } else if (boltYes) {
-          markerClass = "marker-bolt";
-        }
-        // else keep marker-default (grey) for no gaps
+        let markerClass = "marker-default";
+        if (woltYes && boltYes) markerClass = "marker-both";
+        else if (woltYes) markerClass = "marker-wolt";
+        else if (boltYes) markerClass = "marker-bolt";
 
         const icon = L.divIcon({
           className: `lead-marker ${markerClass}`,
-          html: `<span class="grade">${gradeLabel}</span>`,
+          html: `<span>${gradeLabel}</span>`,
           iconSize: [30, 30],
           iconAnchor: [15, 30],
-          popupAnchor: [0, -30]
+          popupAnchor: [0, -30],
         });
 
-        // --- Popup content: show all fields (including new ones) ---
-        const popupHTML = header.map(h =>
-          `<b>${h}:</b> ${row[h] != null ? row[h] : ""}`
-        ).join("<br>");
+        const popupHTML = header
+          .map((h) => `<b>${h}:</b> ${row[h] ?? ""}`)
+          .join("<br>");
 
-        L.marker([lat, lng], { icon }).addTo(markersLayer)
-          .bindPopup(popupHTML);
+        L.marker([lat, lng], { icon }).addTo(markersLayer).bindPopup(popupHTML);
       });
-
-      alert("Map updated with leads!");
     }
 
-    // CSV upload handler
-    document.getElementById("fileInput").addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+    document
+      .getElementById("fileInput")
+      .addEventListener("change", function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
 
-      Papa.parse(file, {
-        header: true,
-        dynamicTyping: false,
-        skipEmptyLines: true,
-        complete: function (results) {
-          const data = results.data;
-          const meta = results.meta;
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            allData = results.data;
+            header = results.meta.fields;
 
-          if (!data.length) {
-            alert("CSV seems to be empty.");
-            return;
-          }
+            // Populate filters
+            populateFilter("filterHunter", new Set(allData.map((d) => d["Hunter name"])));
+            populateFilter("filterWeek",   new Set(allData.map((d) => d["Week"])));
+            populateFilter("filterStatus", new Set(allData.map((d) => d["Status"])));
 
-          const header = meta.fields || Object.keys(data[0]);
-          addRowsToMap(data, header);
-        },
-        error: function (err) {
-          console.error(err);
-          alert("Error parsing CSV file.");
-        }
+            applyFilters();
+          },
+        });
       });
+
+    // Attach filter listeners
+    ["filterHunter", "filterWeek", "filterStatus", "filterGrade"].forEach((id) => {
+      document.getElementById(id).addEventListener("change", applyFilters);
     });
   </script>
 </body>
