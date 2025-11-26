@@ -21,7 +21,7 @@
       font-family: Arial, sans-serif;
     }
 
-    /* FIX: Filters visible on top */
+    /* SINGLE ROW TOP BAR */
     #topbar {
       position: absolute;
       top: 0;
@@ -30,26 +30,33 @@
       z-index: 9999;
       background: #f1f1f1;
       border-bottom: 1px solid #ccc;
-      padding: 10px;
+      padding: 8px;
       display: flex;
-      gap: 15px;
+      flex-direction: row;
+      gap: 12px;
       align-items: center;
-      flex-wrap: wrap;
+
+      /* FORCE SINGLE ROW */
+      white-space: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
 
     label {
       font-weight: bold;
+      margin-right: 3px;
     }
 
     select, input[type="file"] {
-      padding: 5px;
+      padding: 4px 6px;
       font-size: 13px;
+      max-width: 130px;
     }
 
-    /* FIX: Map pushed down below filters */
+    /* Map below fixed bar */
     #map {
       position: absolute;
-      top: 70px;   /* height of filter bar */
+      top: 55px;
       left: 0;
       right: 0;
       bottom: 0;
@@ -73,12 +80,12 @@
     .marker-wolt { background-color: #02bbdeff; }
     .marker-bolt { background-color: #2a9c64ff; }
     .marker-default { background-color: #8f9391ff; }
-
     .marker-both {
       background: linear-gradient(to right, #02bbdeff 50%, #2a9c64ff 50%);
     }
   </style>
 </head>
+
 <body>
 
   <div id="topbar">
@@ -113,9 +120,8 @@
     window.onload = function () {
       map = L.map("map").setView([50.08, 14.44], 12);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
+        maxZoom: 19
       }).addTo(map);
-
       markersLayer = L.layerGroup().addTo(map);
     };
 
@@ -148,7 +154,7 @@
         if (fStatus !== "All" && row["Status"] !== fStatus) return false;
 
         const g = (row["grade"] || "").trim();
-        const normalized = g === "" || /^ungraded$/i.test(g) ? "Ungraded" : g;
+        const normalized = (g === "" || /^ungraded$/i.test(g)) ? "Ungraded" : g;
 
         if (fGrade !== "All" && normalized !== fGrade) return false;
 
@@ -173,7 +179,7 @@
         if (isNaN(lat) || isNaN(lng)) return;
 
         const g = (row[gradeField] || "").trim();
-        const gradeLabel = g === "" || /^ungraded$/i.test(g) ? "" : g.toUpperCase();
+        const gradeLabel = (g === "" || /^ungraded$/i.test(g)) ? "" : g.toUpperCase();
 
         const wYes = (row[woltField] || "").trim().toLowerCase() === "yes";
         const bYes = (row[boltField] || "").trim().toLowerCase() === "yes";
@@ -187,12 +193,12 @@
           className: `lead-marker ${markerClass}`,
           html: `<span>${gradeLabel}</span>`,
           iconSize: [30, 30],
-          iconAnchor: [15, 30],
+          iconAnchor: [15, 30]
         });
 
-        const popupHTML = header
-          .map(h => `<b>${h}:</b> ${row[h] ?? ""}`)
-          .join("<br>");
+        const popupHTML = header.map(h =>
+          `<b>${h}:</b> ${row[h] ?? ""}`
+        ).join("<br>");
 
         L.marker([lat, lng], { icon }).addTo(markersLayer).bindPopup(popupHTML);
       });
