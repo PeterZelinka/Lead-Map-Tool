@@ -35,8 +35,6 @@
       flex-direction: row;
       gap: 12px;
       align-items: center;
-
-      /* FORCE SINGLE ROW */
       white-space: nowrap;
       overflow-x: auto;
       overflow-y: hidden;
@@ -53,7 +51,6 @@
       max-width: 130px;
     }
 
-    /* Map below fixed bar */
     #map {
       position: absolute;
       top: 55px;
@@ -80,8 +77,53 @@
     .marker-wolt { background-color: #02bbdeff; }
     .marker-bolt { background-color: #2a9c64ff; }
     .marker-default { background-color: #8f9391ff; }
+
     .marker-both {
       background: linear-gradient(to right, #02bbdeff 50%, #2a9c64ff 50%);
+    }
+
+    /* Selection = YES → pink outline */
+    .selected {
+      border: 3px solid #df1067ff !important;
+    }
+
+    /* Bottom-right legend box */
+    #legend {
+      position: absolute;
+      bottom: 15px;
+      right: 15px;
+      z-index: 9000;
+      background: white;
+      padding: 12px 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.25);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .legend-circle {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid white;
+    }
+
+    .legend-circle.wolt { background: #02bbdeff; }
+    .legend-circle.bolt { background: #2a9c64ff; }
+    .legend-circle.both {
+      background: linear-gradient(to right, #02bbdeff 50%, #2a9c64ff 50%);
+    }
+    .legend-circle.default { background: #8f9391ff; }
+
+    .legend-outline {
+      border: 3px solid #df1067ff;
     }
   </style>
 </head>
@@ -114,6 +156,31 @@
 
   <div id="map"></div>
 
+  <!-- LEGEND -->
+  <div id="legend">
+    <div class="legend-item">
+      <div class="legend-circle wolt"></div> Wolt gap only
+    </div>
+    <div class="legend-item">
+      <div class="legend-circle bolt"></div> Bolt Food gap only
+    </div>
+    <div class="legend-item">
+      <div class="legend-circle both"></div> Both gaps
+    </div>
+    <div class="legend-item">
+      <div class="legend-circle default"></div> No gaps
+    </div>
+    <div class="legend-item">
+      <div class="legend-circle legend-outline default"></div> Selection = Yes
+    </div>
+    <div class="legend-item">
+      A/B/C/D inside marker = Grade
+    </div>
+    <div class="legend-item">
+      Empty marker = No grade
+    </div>
+  </div>
+
   <script>
     let map, markersLayer, allData = [], header = [];
 
@@ -122,6 +189,7 @@
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19
       }).addTo(map);
+
       markersLayer = L.layerGroup().addTo(map);
     };
 
@@ -169,9 +237,13 @@
 
       const latField = findField(header, ["lat", "latitude"]);
       const lngField = findField(header, ["lng", "lon", "long", "longitude"]);
+
       const gradeField = "grade";
       const woltField = "wolt gap";
       const boltField = "bolt food gap";
+      const salesforceField = "salesforce link";
+      const gmapsField = "google maps link";
+      const selectionField = "selection";
 
       data.forEach(row => {
         const lat = parseFloat(row[latField]);
@@ -184,10 +256,14 @@
         const wYes = (row[woltField] || "").trim().toLowerCase() === "yes";
         const bYes = (row[boltField] || "").trim().toLowerCase() === "yes";
 
+        const selected = (row[selectionField] || "").trim().toLowerCase() === "yes";
+
         let markerClass = "marker-default";
         if (wYes && bYes) markerClass = "marker-both";
         else if (wYes) markerClass = "marker-wolt";
         else if (bYes) markerClass = "marker-bolt";
+
+        if (selected) markerClass += " selected";
 
         const icon = L.divIcon({
           className: `lead-marker ${markerClass}`,
@@ -196,9 +272,18 @@
           iconAnchor: [15, 30]
         });
 
-        const popupHTML = header.map(h =>
-          `<b>${h}:</b> ${row[h] ?? ""}`
-        ).join("<br>");
+        let popupHTML = header
+          .map(h => {
+            let val = row[h] ?? "";
+
+            if (h.toLowerCase() === "salesforce link" && val)
+              return `<b>Salesforce:</b> <a href="${val}" target="_blank">Open Salesforce</a>`;
+            if (h.toLowerCase() === "google maps link" && val)
+              return `<b>Google Maps:</b> <a href="${val}" target="_blank">Open Map</a>`;
+
+            return `<b>${h}:</b> ${val}`;
+          })
+          .join("<br>");
 
         L.marker([lat, lng], { icon }).addTo(markersLayer).bindPopup(popupHTML);
       });
@@ -224,9 +309,8 @@
       });
     });
 
-    ["filterHunter", "filterWeek", "filterStatus", "filterGrade"].forEach(id =>
-      document.getElementById(id).addEventListener("change", applyFilters)
-    );
+    ["filterHunter", "filterWeek", "filterStatus", "filterGrade"]
+      .forEach(id => document.getElementById(id).addEventListener("change", applyFilters));
   </script>
 </body>
 </html>
